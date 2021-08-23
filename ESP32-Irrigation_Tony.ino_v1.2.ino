@@ -1,44 +1,35 @@
 //Irrigation Controller NodeMCU Code by Stoyan Glushkov V1.2
-//test2
+
+//Notes
+// Define Relay Pins on NodeMCU
+// Do not use D4 Pin on NodeMCU with Relay, it is failing boot process and cannot reprogram with connected relay too !!!
+
 #include <WebServer.h>
 #include <WiFi.h>
 #include "EEPROM.h"
 
+
 //RTC Module library
 #include "Wire.h"
+
 
 //Define PCF8563 RTC modile I2C address
 #define PCF8563address 0x51
 
-// Define Relay Pins on NodeMCU
-// Do not use D4 Pin on NodeMCU with Relay, it is failing boot process and cannot reprogram with connected relay too !!!
-
-
-//#define Zone1Pin  4
-//#define Zone2Pin  16
-//#define Zone3Pin  17
-//#define Zone4Pin  18  
-//#define Zone5Pin  19
-//#define Zone6Pin  21
-//#define Zone7Pin  22
-//#define Zone8Pin  23
-
 
 //Define motor driver polarity change pins
-
 #define SwitchPin1  26
 #define SwitchPin2  27
 
 
 //Define Time Variables for startup/end times
-
 int beginhour1;
 int beginminute1;
 int beginhour2;
 int beginminute2;
 
-//define class Valve
 
+//define class Valve
 class Valve {
 public:
     String zone_name;
@@ -55,8 +46,8 @@ public:
     bool last_state;
 };
 
-//declare array of Valve objects
 
+//Declare array of Valve objects
 Valve valves[8];
 const int arr_valves_size = 8;
 const int Zone_Pins[8] = { 4,16,17,18,19,21,22,23 };
@@ -66,6 +57,7 @@ const int Zone_Pins[8] = { 4,16,17,18,19,21,22,23 };
 byte decToBcd(byte val) {
     return((val / 10 * 16) + (val % 10));
 }
+
 
 // Convert binary coded decimal to normal decimal numbers needed for RTC time
 byte bcdToDec(byte val) {
@@ -79,22 +71,24 @@ int recalc_hours(int& inminutes){
   return hours;
 }
 
+
 int recalc_mins(int& inminutes, int& inhours){
   int minutes_remaining=0;
   minutes_remaining = inminutes - (inhours*60);
   return minutes_remaining;
 }
 
+
 //Initialize Valve objects and calculate times
 void valves_init() {
 
-int remain_mins1 = 0;
-int add_hours1 = 0;
-int remain_mins2 = 0;
-int add_hours2 = 0;
+  int remain_mins1 = 0;
+  int add_hours1 = 0;
+  int remain_mins2 = 0;
+  int add_hours2 = 0;
 
-    //set first zone start times 
 
+//set first zone start times
     valves[0].starthour1 = EEPROM.read(8);
     valves[0].startminute1 = EEPROM.read(9);
     valves[0].starthour2 = EEPROM.read(10);
@@ -102,10 +96,9 @@ int add_hours2 = 0;
 
 
 //calc zones start times
-
     for (int i = 1; i <= arr_valves_size; ++i) {
 
-        
+
         valves[i].startminute1 = valves[i-1].startminute1 + EEPROM.read(i-1);
         remain_mins1 = 0;
         if (valves[i].startminute1 >= 60){
@@ -116,7 +109,7 @@ int add_hours2 = 0;
         valves[i].starthour1 = valves[i-1].starthour1 + add_hours1;
         add_hours1 = 0;
 
-        
+
         valves[i].startminute2 = valves[i-1].startminute2 + EEPROM.read(i-1);
         remain_mins2 = 0;
         if (valves[i].startminute2 >= 60){
@@ -126,8 +119,8 @@ int add_hours2 = 0;
         }
         valves[i].starthour2 = valves[i-1].starthour2 + add_hours2;
         add_hours2 = 0;
-        
-    
+
+
 
         while (valves[i].starthour1 >= 24) {
             valves[i].starthour1 = valves[i].starthour1 - 24;
@@ -139,7 +132,7 @@ int add_hours2 = 0;
     }
 
 
-    
+
 //calculate zones stop times
     for (int i = 0; i < arr_valves_size ; ++i) {
         valves[i].stophour1 = valves[i + 1].starthour1;
@@ -147,21 +140,24 @@ int add_hours2 = 0;
         valves[i].stophour2 = valves[i + 1].starthour2;
         valves[i].stopminute2 = valves[i + 1].startminute2;
     }
-   
 
-//set zone names
+
+//set zone numbers
     for (int i = 0; i < arr_valves_size; ++i) {
 
         valves[i].zone_name = "Zone " + String(i + 1);
 
     }
- //set zone microcontroller pin
 
+
+ //set zone microcontroller pin
     for (int i = 0; i < arr_valves_size; ++i) {
 
         valves[i].zone_pin = Zone_Pins[i];
 
     }
+
+
  //get durations from EEPROM
     for (int i = 0; i < arr_valves_size; ++i) {
 
@@ -214,6 +210,7 @@ int sys_sw_form;
 int ondelay = 1000;
 int offdelay = 1000;
 int pwrdelay = 2000;
+int start_off_delay = 500;
 int swmargintime = 7;
 int betweenswtime = 2;
 
@@ -231,7 +228,7 @@ int system_sw;
 //const char* ssid = "DB";
 //const char* password = "bulsatcom";
 
-const char* ssid = "DB";
+const char* ssid = "Mravcho";
 const char* password = "bulsatcom";
 
 IPAddress ip(192, 168, 88, 98);
@@ -243,7 +240,6 @@ WebServer server(80);
 
 
 // Get RTC Time from PCF8563 module
-
 void readPCF8563(byte* second,
     byte* minute,
     byte* hour,
@@ -268,27 +264,6 @@ void readPCF8563(byte* second,
     int i = *dayOfWeek;
     dayOfWeekHuman = weekdays[i];
 
-    //if(*dayOfWeek==0){
-    //  dayOfWeekHuman="Sunday";
-    //}
-    //if(*dayOfWeek==1){
-    //  dayOfWeekHuman="Monday";
-    //}
-    //if(*dayOfWeek==2){
-    //  dayOfWeekHuman="Tuesday";
-    //}
-    //if(*dayOfWeek==3){
-    //  dayOfWeekHuman="Wednesday";
-    //}
-    //if(*dayOfWeek==4){
-    //  dayOfWeekHuman="Thursday";
-    //}
-    //if(*dayOfWeek==5){
-    //  dayOfWeekHuman="Friday";
-    //}
-    //if(*dayOfWeek==6){
-    //  dayOfWeekHuman="Saturday";
-    //}
 }
 
 
@@ -307,43 +282,6 @@ void TurnNONE() {
     digitalWrite(SwitchPin2, LOW);
 }
 
-void TurnOFFonStartup() {
-    SwitchOFF();
-
-    for (int i = 0; i <= sizeof(Zone_Pins); ++i) {
-
-        digitalWrite(Zone_Pins[i], HIGH);
-
-    }
-
-    /* digitalWrite(Zone1Pin, HIGH);
-     digitalWrite(Zone2Pin, HIGH);
-     digitalWrite(Zone3Pin, HIGH);
-     digitalWrite(Zone4Pin, HIGH);
-     digitalWrite(Zone5Pin, HIGH);
-     digitalWrite(Zone6Pin, HIGH);
-     digitalWrite(Zone7Pin, HIGH);
-     digitalWrite(Zone8Pin, HIGH);*/
-
-    delay(pwrdelay);
-
-    for (int i = 0; i <= sizeof(Zone_Pins); ++i) {
-
-        digitalWrite(Zone_Pins[i], LOW);
-
-    }
-    //digitalWrite(Zone1Pin, LOW);
-    //digitalWrite(Zone2Pin, LOW);
-    //digitalWrite(Zone3Pin, LOW);
-    //digitalWrite(Zone4Pin, LOW);
-    //digitalWrite(Zone5Pin, LOW);
-    //digitalWrite(Zone6Pin, LOW);
-    //digitalWrite(Zone7Pin, LOW);
-    //digitalWrite(Zone8Pin, LOW);
-
-    TurnNONE();
-
-}
 
 void SwitchON() {
     TurnON();
@@ -358,6 +296,22 @@ void SwitchOFF() {
 void SwitchNONE() {
     delay(pwrdelay);
     TurnNONE();
+}
+
+
+void TurnOFFonStartup() {
+    SwitchOFF();
+
+    for (int i = 0; i <= sizeof(Zone_Pins); ++i) {
+
+        digitalWrite(Zone_Pins[i], HIGH);
+        delay(start_off_delay);
+        digitalWrite(Zone_Pins[i], LOW);
+
+    }
+
+    TurnNONE();
+
 }
 
 void RelaySwitch() {
@@ -414,25 +368,18 @@ skipped:;
 
 void setup() {
 
-    // Initialize Pins
+// Initialize Pins
     Wire.begin(32, 33); // Sets - SDA (SD2 Pin), SCL (SD3 pin) For RTC module
     EEPROM.begin(512);
 
-
+//Set relay pins mode
     for (int i = 0; i <= sizeof(Zone_Pins); ++i) {
 
         pinMode(Zone_Pins[i], OUTPUT);
 
     }
-    //pinMode(Zone1Pin, OUTPUT);
-    //pinMode(Zone2Pin, OUTPUT);
-    //pinMode(Zone3Pin, OUTPUT);
-    //pinMode(Zone4Pin, OUTPUT);
-    //pinMode(Zone5Pin, OUTPUT);
-    //pinMode(Zone6Pin, OUTPUT);
-    //pinMode(Zone7Pin, OUTPUT);
-    //pinMode(Zone8Pin, OUTPUT);
 
+//Set driver pins mode
     pinMode(SwitchPin1, OUTPUT);
     pinMode(SwitchPin2, OUTPUT);
 
@@ -454,8 +401,6 @@ void setup() {
 
     TurnOFFonStartup();
 
-
-
     //duration1 = EEPROM.read(0);
     //duration2 = EEPROM.read(1);
     //duration3 = EEPROM.read(2);
@@ -472,23 +417,23 @@ void setup() {
 
     system_sw = EEPROM.read(12);
 
-    //Setup UART
+
+//Setup UART
     Serial.begin(115200);
     Serial.println("");
     Serial.println("START");
 
 
+//Configure and start Wi-Fi
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
     }
+        WiFi.config(ip, gateway, subnet);
 
-    // set static IP of WiFi  
 
-    WiFi.config(ip, gateway, subnet);
-    server.begin();
-
+//WiFi info serial log
     Serial.println("");
     Serial.print("Connected to ");
     Serial.println(ssid);
@@ -496,7 +441,8 @@ void setup() {
     Serial.println(WiFi.localIP());
 
 
-    //Setup HTTP server
+//Setup HTTP server
+    server.begin();
     server.on("/", handleRoot);
     server.on("/sw1", handleSW);
     server.on("/sw2", handleSW);
@@ -521,7 +467,7 @@ void setup() {
    String durat6x = server.arg("durat6");
    String durat7x = server.arg("durat7");
    String durat8x = server.arg("durat8");
-   
+
    String sys_swx = server.arg("sys_sw");
 
 
@@ -554,8 +500,6 @@ void setup() {
         }
 
 
-        //      Serial.println("The FORM is in da house!!!");
-        //      server.send(200, "text/plain", "Ok");
         handleRoot();
         server.send(200, "text/html", rootpage);
 
@@ -666,22 +610,15 @@ void SaveToEEPROM() {
 }
 
 void checkwifi() {
-    /* if (WiFi.status() == WL_CONNECTED){
-      Serial.println("");
-      Serial.print("Connected to ");
-      Serial.println( ssid );
-      Serial.print("IP address: ");
-      Serial.println(WiFi.localIP());
-     } */
 
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.print("Disconnected ! ");
 
         lastdisconnected = "yes";
         lastcount = (lastcount + 1);
         WiFi.config(ip, gateway, subnet);
         WiFi.begin(ssid, password);
         WiFi.config(ip, gateway, subnet);
+        delay(500);
         Serial.println(ssid);
         Serial.print("IP address: ");
         Serial.println(WiFi.localIP());
@@ -762,7 +699,7 @@ void  handleRoot() {
         html += "</tr>";
 
     }
-   
+
 
     html += "<tr>";
     html += "<td>Cycle End </td>";
@@ -805,7 +742,7 @@ void  handleRoot() {
     html += "<div>";
     html += "<label for='bminute2'>2nd Begin Minute_</label>";
     html += "<input name='bminute2' id='bminute2' value=" + String(valves[0].startminute2) + ">";
- 
+
     html += "</div>";
 
     for (int i = 0; i < arr_valves_size; ++i) {
@@ -816,7 +753,7 @@ void  handleRoot() {
         html += "</div>";
 
     }
-    
+
     html += "<div>";
     html += "<label for='sys_sw'>System Status____</label>";
     html += "<input name='sys_sw' id='sys_sw' value=" + String(system_sw) + ">  1 for ON,  0 for OFF";
@@ -826,9 +763,9 @@ void  handleRoot() {
     html += "</div>";
     html += "</form>";
 
-    
 
-    // -------- Time Set------------------------- 
+
+    // -------- Time Set-------------------------
 
     html += "<br>";
     html += "<br>";
@@ -874,16 +811,16 @@ void handleSW() {
       html += "<html>\r\n";
       html += "</html>\r\n";
     */
-    
+
     String ip = WiFi.localIP().toString();
     server.sendHeader("Location", String("http://") + ip, true);
-    
+
     //  server.send ( 302, "text/plain", "");
 
     RelaySwitch();
     handleRoot();
     server.send(200, "text/html", rootpage);
-    
+
     //  server.client().stop();
 
 }
