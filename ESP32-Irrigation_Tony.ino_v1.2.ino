@@ -1,5 +1,5 @@
 //Irrigation Controller NodeMCU Code by Stoyan Glushkov V1.2
-//tst
+
 #include <WebServer.h>
 #include <WiFi.h>
 #include "EEPROM.h"
